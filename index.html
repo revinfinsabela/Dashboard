@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - Google Sheets</title>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --panel: #111b2d;
+        --panel-2: #16233d;
+        --text: #edf3ff;
+        --muted: #9cadc9;
+        --accent: #42a5f5;
+        --accent-2: #66bb6a;
+        --warning: #fbbf24;
+        --danger: #f87171;
+        --border: rgba(255,255,255,0.08);
+        --shadow: 0 20px 45px rgba(15, 23, 42, 0.45);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: Inter, "Segoe UI", sans-serif;
+        background: linear-gradient(135deg, #0b1220 0%, #0f172a 100%);
+        color: var(--text);
+      }
+
+      .container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 32px 20px 60px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 3vw, 2.8rem);
+      }
+
+      .source-link {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 10px 16px;
+        text-decoration: none;
+        color: var(--text);
+        font-size: 0.95rem;
+      }
+
+      .source-link:hover {
+        border-color: rgba(66, 165, 245, 0.7);
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 18px;
+        margin: 24px 0 28px;
+      }
+
+      .stat-card,
+      .panel {
+        background: rgba(17, 27, 45, 0.9);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+      }
+
+      .stat-card {
+        padding: 20px 18px;
+      }
+
+      .label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .value {
+        font-size: clamp(1.7rem, 3vw, 2.4rem);
+        font-weight: 700;
+        line-height: 1.1;
+      }
+
+      .sub {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 22px;
+        margin-top: 18px;
+      }
+
+      .panel {
+        padding: 18px 18px 10px;
+      }
+
+      .panel h2 {
+        margin: 0 0 14px;
+        font-size: 1.15rem;
+      }
+
+      .chart-wrap {
+        position: relative;
+        min-height: 340px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+      }
+
+      th, td {
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        text-align: left;
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        background: rgba(17, 27, 45, 0.98);
+        z-index: 1;
+      }
+
+      .table-scroll {
+        max-height: 440px;
+        overflow: auto;
+      }
+
+      .status {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(66, 165, 245, 0.08);
+        color: var(--text);
+        display: none;
+      }
+
+      .status.error {
+        background: rgba(248, 113, 113, 0.08);
+        border-color: rgba(248, 113, 113, 0.3);
+      }
+
+      .status.visible {
+        display: block;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <h1>Dashboard</h1>
+        <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noreferrer">Sumber Data</a>
+      </div>
+
+      <div id="stats" class="stats"></div>
+
+      <div id="status" class="status"></div>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>Trend / Ringkasan</h2>
+          <div class="chart-wrap">
+            <canvas id="mainChart"></canvas>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Kolom Numerik</h2>
+          <div id="numericList" class="metric-list"></div>
+        </section>
+      </div>
+
+      <section class="panel" style="margin-top: 22px; padding-bottom: 18px;">
+        <h2>Preview Data</h2>
+        <div class="table-scroll">
+          <table>
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const DATA_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQAF6XShnABNh_uL9cbxn35xPAA62ZohOWPZLmn6hJQw_wACsd7h4go0cmqFynPXBcu_jTaZvs84M4N/pub?gid=237527706&single=true&output=csv';
+      const sourceLink = document.getElementById('sourceLink');
+      sourceLink.href = DATA_URL;
+
+      function formatNumber(value) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+        if (Math.abs(value) >= 1000000) return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(value);
+        if (Math.abs(value) >= 1000) return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(value);
+        return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(value);
+      }
+
+      function parseNumber(value) {
+        if (value === null || value === undefined || value === '') return null;
+        const cleaned = String(value).replace(/[^0-9,.-]/g, '').replace(/,/g, '');
+        const num = Number(cleaned);
+        return Number.isFinite(num) ? num : null;
+      }
+
+      function showStatus(message, isError = false) {
+        const statusEl = document.getElementById('status');
+        statusEl.textContent = message;
+        statusEl.classList.toggle('error', isError);
+        statusEl.classList.add('visible');
+      }
+
+      function renderStats(stats) {
+        const container = document.getElementById('stats');
+        container.innerHTML = '';
+
+        const cards = [
+          { label: 'Baris Data', value: stats.rows, sub: 'Jumlah record' },
+          { label: 'Kolom', value: stats.fields, sub: 'Semua field' },
+          { label: 'Kolom Numerik', value: stats.numericFields, sub: 'Deteksi otomatis' },
+          { label: 'Total ' + (stats.primaryMetric || 'Metric'), value: formatNumber(stats.primaryTotal), sub: 'Total kumulatif' }
+        ];
+
+        cards.forEach((card) => {
+          const el = document.createElement('div');
+          el.className = 'stat-card';
+          el.innerHTML = `
+            <span class="label">${card.label}</span>
+            <div class="value">${card.value}</div>
+            <div class="sub">${card.sub}</div>
+          `;
+          container.appendChild(el);
+        });
+      }
+
+      function renderNumericList(numericColumns, data) {
+        const container = document.getElementById('numericList');
+        container.innerHTML = '';
+
+        if (!numericColumns.length) {
+          container.innerHTML = '<p style="color: var(--muted); margin: 0;">Tidak ada kolom numerik yang terdeteksi.</p>';
+          return;
+        }
+
+        numericColumns.slice(0, 5).forEach((column) => {
+          const values = data.map((row) => parseNumber(row[column])).filter((v) => v !== null);
+          const total = values.reduce((sum, v) => sum + v, 0);
+          const avg = values.length ? total / values.length : 0;
+          const max = values.length ? Math.max(...values) : 0;
+          const min = values.length ? Math.min(...values) : 0;
+
+          const item = document.createElement('div');
+          item.style.border = '1px solid var(--border)';
+          item.style.borderRadius = '12px';
+          item.style.padding = '14px';
+          item.style.marginBottom = '12px';
+          item.style.background = 'rgba(255,255,255,0.02)';
+          item.innerHTML = `
+            <div style="font-weight: 700; margin-bottom: 8px;">${column}</div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; color: var(--muted); font-size: 0.9rem;">
+              <div>Total: <strong style="color: var(--text);">${formatNumber(total)}</strong></div>
+              <div>Rata-rata: <strong style="color: var(--text);">${formatNumber(avg)}</strong></div>
+              <div>Max: <strong style="color: var(--text);">${formatNumber(max)}</strong></div>
+              <div>Min: <strong style="color: var(--text);">${formatNumber(min)}</strong></div>
+            </div>
+          `;
+          container.appendChild(item);
+        });
+      }
+
+      function renderTable(headers, rows) {
+        const thead = document.getElementById('tableHead');
+        const tbody = document.getElementById('tableBody');
+
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+
+        const trHead = document.createElement('tr');
+        headers.forEach((header) => {
+          const th = document.createElement('th');
+          th.textContent = header;
+          trHead.appendChild(th);
+        });
+        thead.appendChild(trHead);
+
+        rows.slice(0, 10).forEach((row) => {
+          const tr = document.createElement('tr');
+          headers.forEach((header) => {
+            const td = document.createElement('td');
+            td.textContent = row[header] ?? '';
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      function renderChart(labels, values, numericColumns) {
+        const ctx = document.getElementById('mainChart');
+        if (window.mainChartInstance) {
+          window.mainChartInstance.destroy();
+        }
+
+        const chartLabels = labels.length ? labels : numericColumns.slice(0, 6);
+        const chartValues = values.length ? values : numericColumns.slice(0, 6).map(() => 0);
+
+        window.mainChartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: chartLabels,
+            datasets: [{
+              label: 'Nilai',
+              data: chartValues,
+              backgroundColor: ['#42a5f5', '#66bb6a', '#fbbf24', '#ef5350', '#ab47bc', '#26a69a'],
+              borderRadius: 8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                ticks: { color: '#9cadc9' },
+                grid: { color: 'rgba(255,255,255,0.06)' }
+              },
+              x: {
+                ticks: { color: '#9cadc9' },
+                grid: { display: false }
+              }
+            }
+          }
+        });
+      }
+
+      async function loadData() {
+        try {
+          const response = await fetch(DATA_URL, { cache: 'no-store' });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const text = await response.text();
+
+          if (!text.trim()) {
+            throw new Error('CSV kosong atau belum tersedia.');
+          }
+
+          const parsed = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: false });
+
+          if (!parsed.data || !parsed.data.length) {
+            throw new Error('Tidak ada data yang diproses dari CSV.');
+          }
+
+          const headers = parsed.meta.fields || Object.keys(parsed.data[0] || {});
+          const rows = parsed.data;
+
+          const numericColumns = headers.filter((header) => {
+            return rows.some((row) => parseNumber(row[header]) !== null);
+          });
+
+          const primaryMetric = numericColumns[0] || headers[0] || 'Metric';
+          const primaryValues = rows.map((row) => parseNumber(row[primaryMetric])).filter((v) => v !== null);
+
+          const total = primaryValues.reduce((sum, value) => sum + value, 0);
+          const avg = primaryValues.length ? total / primaryValues.length : 0;
+
+          renderStats({
+            rows: rows.length,
+            fields: headers.length,
+            numericFields: numericColumns.length,
+            primaryMetric,
+            primaryTotal: total
+          });
+
+          renderNumericList(numericColumns, rows);
+          renderTable(headers, rows);
+
+          const chartValues = numericColumns.slice(0, 6).map((col) => {
+            const values = rows.map((row) => parseNumber(row[col])).filter((v) => v !== null);
+            return values.reduce((sum, x) => sum + x, 0);
+          });
+          const chartLabels = numericColumns.slice(0, 6);
+          renderChart(chartLabels, chartValues, numericColumns);
+
+          showStatus(`Data berhasil dimuat: ${rows.length} baris, ${headers.length} kolom. Metric utama: ${primaryMetric}.`);
+        } catch (error) {
+          console.error(error);
+          showStatus(`Gagal memuat data. Pastikan link CSV dapat diakses dari browser. ${error.message}`, true);
+          document.getElementById('stats').innerHTML = `
+            <div class="stat-card">
+              <span class="label">Status</span>
+              <div class="value" style="font-size: 1.2rem;">Tidak tersedia</div>
+              <div class="sub">Dashboard siap setelah CSV dapat diakses.</div>
+            </div>
+          `;
+        }
+      }
+
+      loadData();
+    </script>
+  </body>
+</html>
